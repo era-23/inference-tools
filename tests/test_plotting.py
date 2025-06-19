@@ -1,8 +1,9 @@
 from numpy import linspace, zeros, subtract, exp, array
 from numpy.random import default_rng
-from inference.plotting import matrix_plot, trace_plot, hdi_plot, transition_matrix_plot
+from inference.plotting import matrix_plot, matrix_plot_multiseries, trace_plot, hdi_plot, transition_matrix_plot
 from matplotlib.collections import PolyCollection
 import matplotlib.pyplot as plt
+from matplotlib import colormaps
 
 import pytest
 
@@ -18,6 +19,23 @@ def gp_samples():
     return [samples[:, i] for i in range(N)]
 
 
+@pytest.fixture
+def gp_samples_multiseries():
+    N_series = 3
+    N_samp = 5
+    seed = 1234
+    data = []
+    for _ in range(N_series):
+        x = linspace(1, N_samp, N_samp)
+        mean = zeros(N_samp)
+        covariance = exp(-0.1 * subtract.outer(x, x) ** 2)
+
+        samples = default_rng(seed).multivariate_normal(mean, covariance, size=100)
+        seed *= 9
+        data.append([samples[:, i] for i in range(N_samp)])
+    return data
+
+
 def test_matrix_plot(gp_samples):
     n = len(gp_samples)
     labels = [f"test {i}" for i in range(n)]
@@ -25,6 +43,22 @@ def test_matrix_plot(gp_samples):
     fig = matrix_plot(gp_samples, labels=labels, show=False)
     expected_plots = n**2 - n * (n - 1) / 2
     assert len(fig.get_axes()) == expected_plots
+
+
+def test_matrix_plot_multiseries(gp_samples_multiseries):
+    n_series = len(gp_samples_multiseries)
+    assert n_series > 0
+    n_samples = len(gp_samples_multiseries[0])
+    series_labels = [f"series {i}" for i in range(n_series)] 
+    param_labels = [f"param {i}" for i in range(n_samples)]
+    color_names = list(colormaps.keys())
+    series_colors = [color_names[i] for i in range(n_series)] 
+
+    fig = matrix_plot_multiseries(gp_samples_multiseries, series_labels=series_labels, parameter_labels=param_labels, colormap_list=series_colors, show=False)
+    expected_plots = n_samples**2 - n_samples * (n_samples - 1) / 2
+    assert len(fig.get_axes()) == expected_plots
+    expected_series = n_series
+    assert len(fig.legends[0].get_texts()) == expected_series
 
 
 def test_matrix_plot_input_parsing(gp_samples):

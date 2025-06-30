@@ -14,6 +14,7 @@ from matplotlib.patches import Rectangle
 from matplotlib.collections import PatchCollection
 from matplotlib import colormaps
 import matplotlib.patheffects as path_effects
+import copy
 
 
 def matrix_plot(
@@ -439,7 +440,7 @@ def matrix_plot_multiseries(
     # build axis arrays and determine limits for all variables
     axis_limits = []
     axis_arrays = []
-    parameters = [s.tolist() for s in data_series[0]]
+    parameters = [copy.deepcopy(s).tolist() for s in data_series[0]]
     for n_series in range(1, N_series):
         for n_sample in range(N_par):
             parameters[n_sample] += data_series[n_series][n_sample].tolist()

@@ -2,7 +2,7 @@
 .. moduleauthor:: Chris Bowman <chris.bowman.physics@gmail.com>
 """
 
-from numpy import array, meshgrid, linspace, sqrt, ceil, ndarray, percentile
+from numpy import array, meshgrid, linspace, sqrt, ceil, ndarray, percentile, max
 from itertools import product, cycle
 from collections.abc import Sequence
 from warnings import warn
@@ -311,9 +311,10 @@ def matrix_plot_multiseries(
     show: bool = True,
     reference: Sequence[float] = None,
     filename: str = None,
-    plot_style: str = "contour",
-    colormap_list: list = ["Blues", "Greens"],
+    plot_style: str = "hdi",
+    colormap_list: list = ["Blues", "Greens", "Reds", "Purples", "Oranges", "Grays"],
     show_ticks: bool = None,
+    equalise_pdf_heights: bool = True,
     point_colors: Sequence[float] = None,
     hdi_fractions=(0.35, 0.65, 0.95),
     point_size: int = 1,
@@ -347,9 +348,8 @@ def matrix_plot_multiseries(
 
     :param str plot_style: \
         Specifies the type of plot used to display the 2D marginal distributions.
-        Available styles are 'contour' for filled contour plotting, 'hdi' for
-        highest-density interval contouring, 'histogram' for hexagonal-bin histogram,
-        and 'scatter' for scatterplot.
+        Available styles are 'hdi' for highest-density interval contouring and 'scatter' 
+        for scatterplot.
 
     :param str colormap_list: \
         A list of colormaps to be used for plotting. Must be the same length as len(data_series)
@@ -359,6 +359,11 @@ def matrix_plot_multiseries(
         By default, axis ticks are only shown when plotting less than 6 variables.
         This behaviour can be overridden for any number of parameters by setting
         show_ticks to either True or False.
+
+    :param bool equalise_pdf_heights: \
+        By default, all data series will have the same maximum PDF height in the plots
+        along the major axis. Setting this to False preserves relative height differences
+        reflecting the number of samples in each data series. 
 
     :param point_colors: \
         An array containing data which will be used to set the colors of the points
@@ -377,6 +382,18 @@ def matrix_plot_multiseries(
         The font-size used for axis labels.
     """
     N_series = len(data_series)
+    if series_labels is None:  # set default series labels if none are given
+        series_labels = [f"series {i}" for i in range(N_series)]
+    else:
+        if len(series_labels) != N_series:
+            raise ValueError(
+                """\n
+                \r[ matrix_plot error ]
+                \r>> The number of series labels given does not match
+                \r>> the number of plotted data series.
+                """
+            )
+        
     N_par = len(data_series[0])
     if parameter_labels is None:  # set default axis labels if none are given
         if N_par >= 10:
@@ -388,7 +405,7 @@ def matrix_plot_multiseries(
             raise ValueError(
                 """\n
                 \r[ matrix_plot error ]
-                \r>> The number of labels given does not match
+                \r>> The number of parameter labels given does not match
                 \r>> the number of plotted parameters.
                 """
             )
@@ -403,10 +420,10 @@ def matrix_plot_multiseries(
                 """
             )
     # check that given plot style is valid, else default to a histogram
-    if plot_style not in ["contour", "hdi", "histogram", "scatter"]:
-        plot_style = "contour"
+    if plot_style not in ["hdi", "scatter"]:
+        plot_style = "hdi"
         warn(
-            "'plot_style' must be set as either 'contour', 'hdi', 'histogram' or 'scatter'"
+            "'plot_style' must be set as either 'hdi' or 'scatter'"
         )
 
     iterable = hasattr(hdi_fractions, "__iter__")
@@ -476,10 +493,27 @@ def matrix_plot_multiseries(
             (N_par, N_par), (i, j), sharex=x_share, sharey=y_share
         )
     
+    # Pre-compute estimates for correct scaling of data_series
+    all_estimates = [[] for _ in range(N_par)] # estimates by parameter
+    for n_series in range(N_series):
+        samples = data_series[n_series]
+        for tup in inds_list:
+            i, j = tup
+            ax = axes[tup]
+            # are we on the diagonal?
+            if i == j:
+                sample = samples[i]
+                pdf = GaussianKDE(sample)
+                estimate = array(pdf(axis_arrays[i], equalise_pdf_heights))
+                all_estimates[i].append(estimate)
+
+    all_estimate_maxes = [max(par) for par in all_estimates] # Maxima by parameter
+
     initialiseAxes = True
     for n_series in range(N_series):
         
         samples = data_series[n_series]
+        estimates = [par[n_series] for par in all_estimates] # Get all parameter estimates for this data series
         marginal_color = marginal_colors[n_series]
         cmap = cmaps[n_series]
 
@@ -489,19 +523,17 @@ def matrix_plot_multiseries(
             ax = axes[tup]
             # are we on the diagonal?
             if i == j:
-                sample = samples[i]
-                pdf = GaussianKDE(sample)
-                estimate = array(pdf(axis_arrays[i]))
+                estimate = estimates[i]
                 ax.plot(
                     axis_arrays[i],
-                    0.9 * (estimate / estimate.max()),
+                    0.9 * (estimate / estimate.max()) if equalise_pdf_heights else 0.9 * (estimate / all_estimate_maxes[i]),
                     lw=1,
                     color=marginal_color,
                     label = series_labels[n_series]
                 )
                 ax.fill_between(
                     axis_arrays[i],
-                    0.9 * (estimate / estimate.max()),
+                    0.9 * (estimate / estimate.max()) if equalise_pdf_heights else 0.9 * (estimate / all_estimate_maxes[i]),
                     color=marginal_color,
                     alpha=0.1,
                 )
@@ -519,17 +551,7 @@ def matrix_plot_multiseries(
                 y = samples[i]
 
                 # plot the 2D marginals
-                if plot_style == "contour":
-                    # Filled contour plotting using 2D gaussian KDE
-                    pdf = KDE2D(x=x, y=y)
-                    x_ax = axis_arrays[j][::4]
-                    y_ax = axis_arrays[i][::4]
-                    X, Y = meshgrid(x_ax, y_ax)
-                    prob = array(pdf(X.flatten(), Y.flatten())).reshape([L // 4, L // 4])
-                    ax.set_facecolor(cmap(256 // 20))
-                    ax.contourf(X, Y, prob, 10, cmap=cmap)
-
-                elif plot_style == "hdi":
+                if plot_style == "hdi":
                     # Filled contour plotting using 2D gaussian KDE
                     pdf = KDE2D(x=x, y=y)
                     sample_probs = pdf(x, y)
@@ -544,12 +566,6 @@ def matrix_plot_multiseries(
                     levels = sorted(levels)
                     ax.contourf(X, Y, prob, levels=levels, cmap=cmap, alpha=0.7)
                     ax.contour(X, Y, prob, levels=levels, alpha=0.2)
-
-                elif plot_style == "histogram":
-                    # hexagonal-bin histogram
-                    ax.set_facecolor(cmap(0))
-                    ax.hexbin(x, y, gridsize=35, cmap=cmap)
-
                 else:
                     # scatterplot
                     if point_colors is None:

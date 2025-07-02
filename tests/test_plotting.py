@@ -79,6 +79,29 @@ def test_matrix_plot_input_parsing(gp_samples):
         matrix_plot(gp_samples, hdi_fractions=0.5, show=False)
 
 
+def test_matrix_plot_multiseries_input_parsing(gp_samples_multiseries):
+    n_series = len(gp_samples_multiseries)
+    n_params = len(gp_samples_multiseries[0])
+
+    series_labels = [f"series {i}" for i in range(n_series + 1)]
+    param_labels = [f"param {i}" for i in range(n_params + 1)]
+    with pytest.raises(ValueError):
+        matrix_plot_multiseries(gp_samples_multiseries, series_labels=series_labels, parameter_labels=param_labels[1:], show=False)
+
+    with pytest.raises(ValueError):
+        matrix_plot_multiseries(gp_samples_multiseries, series_labels=series_labels[1:], parameter_labels=param_labels, show=False)
+
+    ref_vals = [i for i in range(n_params + 1)]
+    with pytest.raises(ValueError):
+        matrix_plot_multiseries(gp_samples_multiseries, series_labels=series_labels[1:], parameter_labels=param_labels[1:], reference=ref_vals, show=False)
+
+    with pytest.raises(ValueError):
+        matrix_plot_multiseries(gp_samples_multiseries, hdi_fractions=[0.95, 1.05], show=False)
+
+    with pytest.raises(ValueError):
+        matrix_plot_multiseries(gp_samples_multiseries, hdi_fractions=0.5, show=False)
+
+
 def test_trace_plot():
     N = 11
     x = linspace(1, N, N)

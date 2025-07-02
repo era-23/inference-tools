@@ -93,7 +93,7 @@ class GaussianKDE(DensityEstimator):
         # The mode of the pdf, calculated automatically when an instance of GaussianKDE is created.
         self.mode = self.locate_mode()
 
-    def __call__(self, x: ndarray) -> ndarray:
+    def __call__(self, x: ndarray, normalise: bool = True) -> ndarray:
         """
         Evaluate the estimate of the probability distribution function (PDF)
         at the given parameter values.
@@ -109,7 +109,8 @@ class GaussianKDE(DensityEstimator):
         for r, g in zip(regions, index_groups):
             dx = x[g, None] - self.sample[None, self.slices[r]]
             pdf[g] = exp(-((dx * self.q) ** 2)).sum(axis=1)
-        pdf *= self.norm
+        if normalise:
+            pdf *= self.norm
         return pdf if pdf.size > 1 else pdf[0]
 
     def cdf(self, x: ndarray) -> ndarray:
